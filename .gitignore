@@ -1,0 +1,11 @@
+# Downloaded media
+gentoo*cd*
+
+# VirtualBox VDI
+*.vdi
+
+# VIM swp files
+**/*.swp
+
+# Ansible retry files
+**/*.retry

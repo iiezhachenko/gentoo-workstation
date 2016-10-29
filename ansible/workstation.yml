@@ -1,0 +1,83 @@
+---
+- hosts: gentoo-workstation
+  tasks:
+    - name: Create Ansible locks directory
+      file: path=/root/ansible state=directory
+
+    - name: Create GPT partition table
+      shell: parted -s /dev/sda mklabel gpt && \
+             touch /root/ansible/gpt_partition_table_done
+      args:
+        creates: /root/ansible/gpt_partition_table_done
+
+    - name: Create GRUB partition 
+      shell: parted -s /dev/sda mkpart grub 1MiB 3MiB set 1 bios_grub on && \
+             touch /root/ansible/grub_partition_done
+      args:
+        creates: /root/ansible/grub_partition_done
+
+    - name: Create boot partition 
+      shell: parted -s /dev/sda mkpart boot 3MiB 131MiB && \
+             touch /root/ansible/boot_partition_done
+      args:
+        creates: /root/ansible/boot_partition_done
+
+    - name: Make ext2 filesystem on boot partition 
+      shell: mkfs.ext2 /dev/sda2 && \
+             touch /root/ansible/boot_partition_filesystem_done
+      args:
+        creates: /root/ansible/boot_partition_filesystem_done
+
+    - name: Create swap partition 
+      shell: parted -s /dev/sda mkpart swap 131MiB 1155MiB && \
+             touch /root/ansible/swap_partition_done
+      args:
+        creates: /root/ansible/swap_partition_done
+
+      # Using a bit of magic here. If you will try to use generally recognized 
+      # -1s pattern to fill storage device remainings with partition, 
+      # it will miscalculate sectors a bit
+    - name: Create root partition 
+      shell: parted -s /dev/sda -- mkpart root 1156MiB -100s && \
+             touch /root/ansible/root_partition_done
+      args:
+        creates: /root/ansible/root_partition_done
+
+    - name: Make ext4 filesystem on root partition 
+      shell: mkfs.ext4 /dev/sda4 && \
+             touch /root/ansible/root_partition_filesystem_done
+      args:
+        creates: /root/ansible/root_partition_filesystem_done
+
+    - name: Enable swap on swap partition
+      shell: mkswap /dev/sda3 && swapon /dev/sda3 && \
+             touch /root/ansible/enable_swap_done
+      args:
+        creates: /root/ansible/enable_swap_done
+
+    - name: Mount root partition
+      shell: mount /dev/sda4 /mnt/gentoo && \
+             touch /root/ansible/mount_root_partition_done
+      args:
+        creates: /root/ansible/mount_root_partition_done
+        warn: False
+
+    - name: Create /mnt/gentoo/boot mount point
+      file: path=/mnt/gentoo/boot state=directory
+
+    - name: Mount boot partition
+      shell: mount /dev/sda2 /mnt/gentoo/boot && \
+             touch /root/ansible/mount_boot_partition_done
+      args:
+        creates: /root/ansible/mount_boot_partition_done
+        warn: False
+
+- hosts: gentoo-workstation
+  tasks:
+    - name: Download stage tarball
+      shell: "build=$(curl http://mirror.eu.oneandone.net/linux/distributions/gentoo/gentoo/releases/amd64/autobuilds/latest-stage3-amd64.txt | grep tar.bz2 | cut -d ' ' -f 1) && \
+      curl http://mirror.eu.oneandone.net/linux/distributions/gentoo/gentoo/releases/amd64/autobuilds/$build > stage3-amd64.tar.bz2"
+      args:
+        chdir: /mnt/gentoo
+        creates: /mnt/gentoo/stage3-amd64.tar.bz2
+        executable: /bin/bash

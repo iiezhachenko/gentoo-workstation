@@ -1,0 +1,5 @@
+- Make implement stage tarball checksum verification
+- Implement j2 make.conf parameter automated setup based on facts
+- Implement VM config file
+- Parametrize hostname setting
+- Rework interface setup

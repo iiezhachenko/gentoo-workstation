@@ -1,5 +1,6 @@
 ---
-- hosts: gentoo-workstation
+- name: Create and mount filesystems
+  hosts: gentoo-workstation
   tasks:
     - name: Create Ansible locks directory
       file: path=/root/ansible state=directory
@@ -72,12 +73,143 @@
         creates: /root/ansible/mount_boot_partition_done
         warn: False
 
-- hosts: gentoo-workstation
+- name: Stage 1
+  hosts: gentoo-workstation
   tasks:
     - name: Download stage tarball
-      shell: "build=$(curl http://mirror.eu.oneandone.net/linux/distributions/gentoo/gentoo/releases/amd64/autobuilds/latest-stage3-amd64.txt | grep tar.bz2 | cut -d ' ' -f 1) && \
+      shell : "build=$(curl http://mirror.eu.oneandone.net/linux/distributions/gentoo/gentoo/releases/amd64/autobuilds/latest-stage3-amd64.txt | grep tar.bz2 | cut -d ' ' -f 1) && \
       curl http://mirror.eu.oneandone.net/linux/distributions/gentoo/gentoo/releases/amd64/autobuilds/$build > stage3-amd64.tar.bz2"
       args:
         chdir: /mnt/gentoo
         creates: /mnt/gentoo/stage3-amd64.tar.bz2
         executable: /bin/bash
+        
+    - name: Unzip stage tarball
+      shell: tar xvjpf stage3-amd64.tar.bz2 --xattrs
+      args:
+        creates: /mnt/gentoo/etc
+        chdir: /mnt/gentoo
+        warn: False
+
+    - name: Mount proc partition
+      shell: mount -t proc proc /mnt/gentoo/proc && \
+             touch /root/ansible/mount_proc_partition_done
+      args:
+        creates: /root/ansible/mount_proc_partition_done
+        warn: False
+
+    - name: Mount sys partition
+      shell: mount --rbind /sys /mnt/gentoo/sys && \
+             mount --make-rslave /mnt/gentoo/sys && \
+             touch /root/ansible/mount_sys_partition_done
+      args:
+        creates: /root/ansible/mount_sys_partition_done
+        warn: False
+
+    - name: Mount dev partition
+      shell: mount --rbind /dev /mnt/gentoo/dev && \
+             mount --make-rslave /mnt/gentoo/dev && \
+             touch /root/ansible/mount_dev_partition_done
+      args:
+        creates: /root/ansible/mount_dev_partition_done
+        warn: False
+
+    - name: Upload make.conf
+      copy: src=files/make.conf dest=/mnt/gentoo/etc/portage/make.conf
+
+    - name: Create portage repos.conf folder
+      file: path=/mnt/gentoo/etc/portage/repos.conf state=directory
+      
+    - name: Add config to repos.conf
+      shell: cp /mnt/gentoo/usr/share/portage/config/repos.conf /mnt/gentoo/etc/portage/repos.conf/gentoo.conf
+      args:
+        creates: /mnt/gentoo/etc/portage/repos.conf/gentoo.conf
+
+    - name: Copy DNS info from live cd to installed OS
+      shell: cp -L /etc/resolv.conf /mnt/gentoo/etc/ 
+      args:
+        creates: /mnt/gentoo/etc/resolv.conf
+
+    - name: Update Portage snapshot
+      shell: chroot /mnt/gentoo /bin/bash -c "emerge-webrsync -q" && \
+             touch /root/ansible/emerge_webrsync_done 
+      args:
+        creates: /root/ansible/emerge_webrsync_done
+
+    - name: Update @world
+      shell: chroot /mnt/gentoo /bin/bash -c \
+             "emerge --quiet-build y --update --deep --newuse @world" && \
+             touch /root/ansible/update_world_done
+      args:
+        creates: /root/ansible/update_world_done
+
+    - name: Set timezone config
+      shell: echo "Europe/Kiev" > /mnt/gentoo/etc/timezone
+      args:
+        creates: /mnt/gentoo/etc/timezone
+
+    - name: Reconfigure timezone-data
+      shell: chroot /mnt/gentoo /bin/bash -c \
+             "emerge --config sys-libs/timezone-data" && \
+             touch /root/ansible/reconfigure_timezone_data_done
+      args:
+        creates: /root/ansible/reconfigure_timezone_data_done
+
+    - name: Upload locale.gen
+      copy: src=files/locale.gen dest=/mnt/gentoo/etc/locale.gen
+
+    - name: Generate locales
+      shell: chroot /mnt/gentoo /bin/bash -c \
+             "locale-gen" && \
+             touch /root/ansible/generate_locales_done
+      args:
+        creates: /root/ansible/generate_locales_done
+
+    - name: Set locale
+      copy: src=files/02locale dest=/mnt/gentoo/etc/env.d/02locale
+
+- name: Build kernel
+  hosts: gentoo-workstation
+  tasks:
+    - name: Download kernel sources
+      shell: chroot /mnt/gentoo /bin/bash -c \
+             "emerge --quiet-build y sys-kernel/gentoo-sources" && \
+             touch /root/ansible/get_kernel_sources_done
+      args:
+        creates: /root/ansible/get_kernel_sources_done
+
+    - name: Emerge genkernel
+      shell: chroot /mnt/gentoo /bin/bash -c \
+             "emerge --quiet-build y sys-kernel/genkernel" && \
+             touch /root/ansible/emerge_genkernel_done
+      args:
+        creates: /root/ansible/emerge_genkernel_done
+
+    - name: Upload fstab config
+      copy: src=files/fstab dest=/mnt/gentoo/etc/fstab
+
+    - name: Build kernel
+      shell: chroot /mnt/gentoo /bin/bash -c \
+             "genkernel all" && \
+             touch /root/ansible/build_kernel_done
+      args:
+        creates: /root/ansible/build_kernel_done
+
+    - name: Set hostname
+      shell: echo "localhost" > /mnt/gentoo/etc/hostname
+      args:
+        creates: /mnt/gentoo/etc/hostname
+        
+    - name: Emerge net-misc/netifrc
+      shell: chroot /mnt/gentoo /bin/bash -c \
+             "emerge --quiet-build y --noreplace net-misc/netifrc" && \
+             touch /root/ansible/emerge_netifrc_done
+      args:
+        creates: /root/ansible/emerge_netifrc_done
+
+    - name: Add network interface configuration
+      shell: chroot /mnt/gentoo /bin/bash -c \
+             "emerge --quiet-build y --noreplace net-misc/netifrc" && \
+             touch /root/ansible/emerge_netifrc_done
+      args:
+        creates: /root/ansible/emerge_netifrc_done

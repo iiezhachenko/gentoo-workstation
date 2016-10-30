@@ -16,7 +16,7 @@ __base="$(basename ${__file} .sh)"
 __root="$(cd "$(dirname "${__dir}")" && pwd)" # <-- change this as it depends on your app
 
 vm_os_type=Gentoo_64
-autobuild_number=$(($(date '+%Y%m%d')-2))
+autobuild_number=$(curl http://mirror.eu.oneandone.net/linux/distributions/gentoo/gentoo/releases/amd64/autobuilds/latest-install-amd64-minimal.txt | grep iso | cut -d ' ' -f 1)
 usage_banner="usage: create_vm.sh hdd_size ram vm_name
     hdd_size - VM disk size in megabytes
     ram_mib - VM RAM size in megabytes
@@ -65,13 +65,13 @@ function create_vbox_vm {
 [[ ! $vm_name =~ ^[a-zA-Z_\-]+$ ]] && usage
 
 
-curl http://distfiles.gentoo.org/releases/amd64/autobuilds/$autobuild_number/install-amd64-minimal-$autobuild_number.iso.DIGESTS.asc > $__dir/gentoo-install-cd-digests
+curl http://distfiles.gentoo.org/releases/amd64/autobuilds/$autobuild_number.DIGESTS.asc > $__dir/gentoo-install-cd-digests
 [ $DEBUG_MODE = true ] && cat $__dir/gentoo-install-cd-digests
 target_checksum=$(grep -A 1 -i sha512  gentoo-install-cd-digests | grep iso | grep -v CONTENTS | cut -d ' ' -f 1)
 existing_checksum=$(shasum -a 512 $__dir/gentoo-install-cd.iso | cut -d ' ' -f 1)
 
 if [ -f $__dir/gentoo-install-cd.iso ] && [ $existing_checksum != $target_checksum ]; then
-  curl http://distfiles.gentoo.org/releases/amd64/autobuilds/$autobuild_number/install-amd64-minimal-$autobuild_number.iso > $__dir/gentoo-install-cd.iso
+  curl http://distfiles.gentoo.org/releases/amd64/autobuilds/$autobuild_number > $__dir/gentoo-install-cd.iso
 fi
 
 create_vbox_vm $vm_name
@@ -83,5 +83,5 @@ VBoxManage storageattach $vm_name --storagectl "SATA Controller" --port 0 --devi
 VBoxManage storagectl $vm_name --name "IDE Controller" --add ide
 VBoxManage storageattach $vm_name --storagectl "IDE Controller" --port 0 --device 0 --type dvddrive --medium $__dir/gentoo-install-cd.iso 
 
-VBoxManage modifyvm $vm_name --memory $ram_size --vram 256 --cpus 2 --natpf1 "guestssh,tcp,,2222,,22" 
+VBoxManage modifyvm $vm_name --memory $ram_size --vram 256 --cpus 4 --natpf1 "guestssh,tcp,,2222,,22" 
 VBoxManage startvm $vm_name
